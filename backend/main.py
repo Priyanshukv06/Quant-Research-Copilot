@@ -5,6 +5,7 @@ import json
 
 from agents.orchestrator import orchestrator_agent
 from agents.screener import screener_agent
+from agents.news import news_agent
 from llm.provider import llm
 
 # Setup basic logging
@@ -46,14 +47,24 @@ async def process_query(req: QueryRequest):
             data["bq_query"] = screen_result["query"]
             if "error" in screen_result:
                 data["error"] = screen_result["error"]
+            if action == "SCREEN_AND_NEWS":
+                sym_list = [s["nse_symbol"] for s in screen_result.get("symbols", [])]
+                sector_filter = next((ind.get("params", {}).get("value") for ind in indicators if ind["id"] == "sector_filter"), None)
+                data["news"] = await news_agent.get_intelligence(symbols=sym_list, sector=sector_filter)
+                
         except Exception as e:
             logger.error(f"Screening failed: {e}")
             data["screened_symbols"] = []
             data["error"] = str(e)
             
     elif action == "NEWS":
-        # Placeholder for Phase 2
-        data["news"] = "News fetching not yet implemented (Phase 2)."
+        symbols = intent.get("symbols", [])
+        sector = intent.get("sector_filter")
+        try:
+            data["news"] = await news_agent.get_intelligence(symbols=symbols, sector=sector)
+        except Exception as e:
+            logger.error(f"News fetching failed: {e}")
+            data["error"] = str(e)
 
     return QueryResponse(action=action, data=data)
 
