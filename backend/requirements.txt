@@ -1,0 +1,25 @@
+# Core
+fastapi==0.115.12
+uvicorn[standard]==0.34.3
+python-dotenv==1.1.1
+pydantic==2.11.3
+
+# LLM
+openai==1.86.0
+httpx==0.28.1
+
+# BigQuery
+google-cloud-bigquery==3.34.0
+google-auth==2.40.3
+
+# News
+feedparser==6.0.11
+
+# Visualization
+plotly==6.1.2
+
+# Agent Framework
+langgraph==0.4.8
+
+# Utilities
+tenacity==9.1.2

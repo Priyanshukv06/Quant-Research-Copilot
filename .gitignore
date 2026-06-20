@@ -1,0 +1,17 @@
+# Ignore sensitive data sample directory
+data_samples/
+
+# Mac/OSX
+.DS_Store
+
+# IDEs
+.vscode/
+.idea/
+
+# Root-level Python/Env (if any)
+__pycache__/
+*.pyc
+.env
+.venv/
+venv/
+env/
