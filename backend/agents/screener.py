@@ -10,6 +10,7 @@ from google.oauth2 import service_account
 
 from config import settings
 from templates.indicators import build_query
+from agents.refiner import refiner_agent
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,7 @@ class ScreenerAgent:
             logger.error(f"Screener failed to extract parameters: {e}")
             return []
 
-    def execute_screen(self, indicators: List[Dict[str, Any]]) -> Dict[str, Any]:
+    async def execute_screen(self, indicators: List[Dict[str, Any]], user_query: str) -> Dict[str, Any]:
         """
         Takes a list of indicators, generates BQ SQL, and intersects results.
         Returns a dictionary with 'symbols' and the 'query' executed.
@@ -99,23 +100,36 @@ class ScreenerAgent:
         # Clean up newlines and extra spaces for cleaner JSON output
         final_query = " ".join(final_query.split())
         
-        logger.info(f"Executing BigQuery: {final_query}")
+        # --- SQL REFINER ---
+        refined_query = await refiner_agent.refine_query(user_query, final_query)
+        
+        logger.info(f"Executing BigQuery (Refined): {refined_query}")
 
         try:
-            query_job = self.client.query(final_query)
+            # Try to execute the LLM refined query first
+            query_job = self.client.query(refined_query)
             results = query_job.result()
-            # Return fully parsed dictionary rows with all requested metrics
-            symbols_data = []
-            for row in results:
-                row_dict = dict(row)
-                if "near_52_week_high" in row_dict:
-                    row_dict["price% from 52 week high"] = row_dict.pop("near_52_week_high")
-                symbols_data.append(row_dict)
-                
-            logger.info(f"Screening returned {len(symbols_data)} symbols")
-            return {"symbols": symbols_data, "query": final_query}
+            executed_query = refined_query
         except Exception as e:
-            logger.error(f"BigQuery execution failed: {e}")
-            return {"symbols": [], "query": final_query, "error": str(e)}
+            logger.warning(f"Refined query execution failed: {e}. Falling back to base template query.")
+            try:
+                # Fallback to the safe, rigid template query
+                query_job = self.client.query(final_query)
+                results = query_job.result()
+                executed_query = final_query
+            except Exception as inner_e:
+                logger.error(f"Base BigQuery execution also failed: {inner_e}")
+                return {"symbols": [], "query": final_query, "error": str(inner_e)}
+
+        # Return fully parsed dictionary rows with all requested metrics
+        symbols_data = []
+        for row in results:
+            row_dict = dict(row)
+            if "near_52_week_high" in row_dict:
+                row_dict["price% from 52 week high"] = row_dict.pop("near_52_week_high")
+            symbols_data.append(row_dict)
+            
+        logger.info(f"Screening returned {len(symbols_data)} symbols")
+        return {"symbols": symbols_data, "query": executed_query}
 
 screener_agent = ScreenerAgent()

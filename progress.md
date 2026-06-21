@@ -12,8 +12,8 @@ Multi-agent agentic AI system for quantitative stock research, combining NL-driv
 ---
 
 ## Phase 1: Foundation
-**Status**: 🟡 In Progress  
-**Started**: 2026-06-20  
+**Status**: ✅ Completed  
+**Completed**: 2026-06-20  
 
 ### Completed
 - [x] Project scaffolding and directory structure
@@ -35,10 +35,24 @@ Multi-agent agentic AI system for quantitative stock research, combining NL-driv
 ---
 
 ## Phase 2: News Agent
-**Status**: ⬜ Not Started
+**Status**: ✅ Completed
+
+### Completed
+- [x] Google News RSS integration (entity/sector/macro)
+- [x] ET Now RSS integration (markets + companies)
+- [x] LLM-based relevance + sentiment classification
+- [x] 3-level news fetching pipeline
+- [x] API rate limit protection (3-stock limit for deep dives)
+- [x] Integrate `NEWS` and `SCREEN_AND_NEWS` endpoints
 
 ## Phase 3: Synthesis + Visualization
-**Status**: ⬜ Not Started
+**Status**: ✅ Completed
+
+### Completed
+- [x] Synthesis agent (cross-reference screen + news)
+- [x] Plotly chart templates (bar charts for metrics)
+- [x] Report agent (structured markdown output)
+- [x] FastAPI pipeline orchestration (Screener -> News -> Synthesis -> Report + Visuals)
 
 ## Phase 4: Frontend Integration
 **Status**: ⬜ Not Started

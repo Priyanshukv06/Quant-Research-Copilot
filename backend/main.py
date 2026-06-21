@@ -6,6 +6,9 @@ import json
 from agents.orchestrator import orchestrator_agent
 from agents.screener import screener_agent
 from agents.news import news_agent
+from agents.synthesis import synthesis_agent
+from agents.report import report_agent
+from utils.visualizer import visualizer
 from llm.provider import llm
 
 # Setup basic logging
@@ -41,8 +44,8 @@ async def process_query(req: QueryRequest):
             indicators = await screener_agent.extract_parameters(req.query)
             data["indicators_extracted"] = indicators
             
-            # Synchronous BigQuery call for now
-            screen_result = screener_agent.execute_screen(indicators)
+            # Await the async BigQuery execution (which now includes SQL Refiner)
+            screen_result = await screener_agent.execute_screen(indicators, req.query)
             data["screened_symbols"] = screen_result["symbols"]
             data["bq_query"] = screen_result["query"]
             if "error" in screen_result:
@@ -52,6 +55,19 @@ async def process_query(req: QueryRequest):
                 sector_filter = next((ind.get("params", {}).get("value") for ind in indicators if ind["id"] == "sector_filter"), None)
                 data["news"] = await news_agent.get_intelligence(symbols=sym_list, sector=sector_filter)
                 
+                # 3. Synthesis and Report Generation
+                data["synthesis"] = await synthesis_agent.synthesize(
+                    screened_data=screen_result.get("symbols", []), 
+                    news_data=data["news"]
+                )
+                data["report_markdown"] = await report_agent.generate_report(
+                    query=req.query, 
+                    synthesis_data=data["synthesis"]
+                )
+            
+            # 4. Generate Visualization Charts for any screen action
+            data["charts"] = visualizer.generate_comparison_charts(screen_result.get("symbols", []))
+            
         except Exception as e:
             logger.error(f"Screening failed: {e}")
             data["screened_symbols"] = []

@@ -86,6 +86,7 @@ You must respond with ONLY a JSON array. No explanation.
 
 Available Indicators and required parameters:
 - live_pe: {{"operator": "<|>|=", "value": float}}
+- pe_below_sector_median: {{}}
 - margin_improving: {{"quarters": int, "metric": "operating|net"}}
 - revenue_growth_yoy: {{"min_pct": float}}
 - eps_growth_yoy: {{"min_pct": float}}

@@ -36,6 +36,42 @@ INDICATOR_TEMPLATES: Dict[str, Dict[str, Any]] = {
         "bank_compatible": True
     },
     
+    "pe_below_sector_median": {
+        "description": "P/E ratio below the median P/E of its sector",
+        "params": {},
+        "tables": ["daily_stock_price", "quarterly_results", "company_info"],
+        "bq_template": """
+            WITH ttm_eps AS (
+                SELECT nse_symbol,
+                    SUM(SAFE_CAST(REGEXP_REPLACE(CAST(EPS_in_Rs AS STRING), r'[^\\d.-]', '') AS FLOAT64)) AS ttm_eps
+                FROM `{project_id}.{dataset_fundamentals}.quarterly_results`
+                WHERE PARSE_DATE('%b %Y', Period) >= DATE_SUB(CURRENT_DATE(), INTERVAL 15 MONTH)
+                GROUP BY nse_symbol
+                HAVING COUNT(*) = 4
+            ),
+            latest_price AS (
+                SELECT symbol AS nse_symbol, close AS latest_close
+                FROM `{project_id}.{dataset_technicals}.daily_stock_price`
+                WHERE date = (SELECT MAX(date) FROM `{project_id}.{dataset_technicals}.daily_stock_price`)
+            ),
+            pe_data AS (
+                SELECT p.nse_symbol, c.sector_classification, (p.latest_close / e.ttm_eps) AS live_pe
+                FROM latest_price p 
+                JOIN ttm_eps e USING(nse_symbol)
+                JOIN `{project_id}.{dataset_fundamentals}.company_info` c USING(nse_symbol)
+                WHERE e.ttm_eps > 0
+            )
+            SELECT nse_symbol, live_pe AS pe_below_sector_median FROM (
+                SELECT nse_symbol, live_pe, 
+                       PERCENTILE_CONT(live_pe, 0.5) OVER(PARTITION BY sector_classification) AS median_pe
+                FROM pe_data
+            )
+            WHERE live_pe < median_pe
+        """,
+        "bank_compatible": True
+    },
+
+    
     "cfo_positive": {
         "description": "Cash from operations positive for recent years",
         "params": {},
