@@ -1,0 +1,139 @@
+.page {
+  animation: fadeIn var(--transition-smooth);
+}
+
+.header {
+  margin-bottom: 2rem;
+}
+
+.title {
+  font-size: 2.25rem;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.subtitle {
+  color: var(--text-secondary);
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 2rem;
+  align-items: start;
+}
+
+.markdownContainer {
+  padding: 2.5rem;
+  font-size: 1.05rem;
+  line-height: 1.8;
+  color: var(--text-primary);
+}
+
+.markdownContainer h1 {
+  font-size: 2rem;
+  color: var(--accent-cyan);
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 0.5rem;
+}
+
+.markdownContainer h2 {
+  font-size: 1.5rem;
+  margin-top: 2.5rem;
+  margin-bottom: 1rem;
+  color: #fff;
+}
+
+.markdownContainer h3 {
+  font-size: 1.25rem;
+  margin-top: 2rem;
+  margin-bottom: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.markdownContainer ul {
+  margin-left: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.markdownContainer li {
+  margin-bottom: 0.5rem;
+}
+
+.markdownContainer table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 2rem 0;
+}
+
+.markdownContainer th {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 1rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.markdownContainer td {
+  padding: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.markdownContainer strong {
+  color: #fff;
+}
+
+.sidebarContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.chartCard {
+  height: 350px;
+  padding: 1rem;
+}
+
+@media (max-width: 1200px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.plainPdfMode {
+  display: block !important;
+  background: white !important;
+  color: black !important;
+}
+
+.plainPdfMode .markdownContainer {
+  padding: 0 !important;
+  color: black !important;
+  background: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.plainPdfMode :global(h1), .plainPdfMode :global(h2), .plainPdfMode :global(h3), .plainPdfMode :global(strong) {
+  color: black !important;
+}
+
+.plainPdfMode :global(table) {
+  border-collapse: collapse !important;
+}
+
+.plainPdfMode :global(th), .plainPdfMode :global(td) {
+  border: 1px solid #ccc !important;
+  color: black !important;
+  background: none !important;
+}
+
+.plainPdfMode .sidebarContainer {
+  display: block !important;
+  margin-top: 3rem;
+}
+
+:global(.pdf-page-break) {
+  page-break-inside: avoid !important;
+  break-inside: avoid !important;
+}
