@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:8000/api/copilot';
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_URL = `${BASE_URL}/api/copilot`;
 
 export interface QueryResponse {
   action: string;

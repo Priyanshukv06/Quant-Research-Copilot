@@ -1,0 +1,43 @@
+services:
+  # ------------------------------------------------------------
+  # 1. FASTAPI BACKEND SERVICE
+  # ------------------------------------------------------------
+  - type: web
+    name: quant-backend
+    env: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    
+    envVars:
+      # These will prompt you to enter them in the Render Dashboard securely
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: SERPER_API_KEY
+        sync: false
+        
+      # This points Google Cloud SDK to the Secret File we define below
+      - key: GOOGLE_APPLICATION_CREDENTIALS
+        value: /etc/secrets/service-account.json
+
+    # This creates a secure vault for your BigQuery JSON file
+    secretFiles:
+      - name: service-account.json
+        file: /etc/secrets/service-account.json
+
+  # ------------------------------------------------------------
+  # 2. NEXT.JS FRONTEND SERVICE
+  # ------------------------------------------------------------
+  - type: web
+    name: quant-frontend
+    env: node
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    
+    envVars:
+      # This needs to be the URL of your backend.
+      # Because Render generates a unique URL (like https://quant-backend-xyz.onrender.com)
+      # you will need to paste that URL into the Dashboard during setup.
+      - key: NEXT_PUBLIC_API_URL
+        sync: false
