@@ -95,9 +95,20 @@ async def process_query(req: QueryRequest):
 
     return QueryResponse(action=action, data=data)
 
+import os
+from fastapi.staticfiles import StaticFiles
+
 @app.get("/health")
 def health_check():
     return {"status": "ok", "provider": llm.primary_model}
+
+# Mount Next.js frontend static files
+frontend_out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../frontend/out")
+if os.path.exists(frontend_out):
+    logger.info(f"Serving frontend from {frontend_out}")
+    app.mount("/", StaticFiles(directory=frontend_out, html=True), name="frontend")
+else:
+    logger.warning("Frontend build directory not found. API only mode.")
 
 if __name__ == "__main__":
     import uvicorn

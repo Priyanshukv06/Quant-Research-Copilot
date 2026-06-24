@@ -1,7 +1,10 @@
 import axios from 'axios';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-const API_URL = `${BASE_URL}/api/copilot`;
+// In production (Docker), the frontend is served by the same Python backend, so we use relative routing.
+// In development, Next.js runs on port 3000 and FastAPI on port 8000.
+const API_URL = process.env.NODE_ENV === 'production' 
+  ? '/api/copilot' 
+  : 'http://localhost:8000/api/copilot';
 
 export interface QueryResponse {
   action: string;
