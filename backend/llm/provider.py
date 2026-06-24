@@ -27,7 +27,7 @@ class LLMProvider:
     def __init__(self):
         self._client = httpx.AsyncClient(timeout=120.0)
         self.primary_model = settings.NVIDIA_MODEL
-        self.fallback_model = settings.OLLAMA_MODEL
+        self.fallback_model = settings.GROQ_MODEL
 
     async def close(self):
         await self._client.aclose()
@@ -80,33 +80,38 @@ class LLMProvider:
         )
         return content
 
-    async def _call_ollama(
+    async def _call_groq(
         self,
         messages: list[dict],
         temperature: float = settings.TEMPERATURE,
         max_tokens: int = settings.MAX_TOKENS,
         model: Optional[str] = None,
     ) -> str:
-        """Call Ollama local API (OpenAI-compatible format)."""
+        """Call Groq Cloud API (OpenAI-compatible format)."""
         payload = {
             "model": model or self.fallback_model,
             "messages": messages,
-            "options": {
-                "temperature": temperature,
-                "num_predict": max_tokens,
-            },
+            "max_tokens": max_tokens,
+            "temperature": temperature,
             "stream": False,
         }
 
+        headers = {
+            "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+
         response = await self._client.post(
-            f"{settings.OLLAMA_BASE_URL}/api/chat",
+            f"{settings.GROQ_BASE_URL}/chat/completions",
+            headers=headers,
             json=payload,
         )
         response.raise_for_status()
         data = response.json()
 
-        content = data["message"]["content"]
-        logger.info(f"Ollama response: model={model or self.fallback_model}")
+        content = data["choices"][0]["message"]["content"]
+        logger.info(f"Groq response: model={model or self.fallback_model}")
         return content
 
     async def generate(
@@ -119,7 +124,7 @@ class LLMProvider:
         """
         Generate a response using the LLM with automatic fallback.
         
-        Tries NVIDIA NIM first, falls back to Ollama on failure.
+        Tries NVIDIA NIM first, falls back to Groq on failure.
         """
         # Try NVIDIA NIM first
         try:
@@ -130,20 +135,19 @@ class LLMProvider:
                 enable_thinking=enable_thinking,
             )
         except Exception as e:
-            logger.warning(f"NVIDIA NIM failed: {e}. Falling back to Ollama.")
+            logger.warning(f"NVIDIA NIM failed: {e}. Falling back to Groq.")
 
-        # Fallback to Ollama
+        # Fallback to Groq
         try:
-            return await self._call_ollama(
+            return await self._call_groq(
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
         except Exception as e:
-            logger.error(f"Ollama also failed: {e}")
+            logger.error(f"Groq also failed: {e}")
             raise RuntimeError(
-                "All LLM providers failed. Ensure NVIDIA NIM API key is valid "
-                "or Ollama is running locally."
+                "All LLM providers failed. Ensure NVIDIA NIM or GROQ API keys are valid."
             ) from e
 
     async def generate_json(

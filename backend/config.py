@@ -18,9 +18,10 @@ class Settings:
     NVIDIA_BASE_URL: str = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
     NVIDIA_MODEL: str = os.getenv("NVIDIA_MODEL", "google/diffusiongemma-26b-a4b-it")
 
-    # ── Ollama (Local Fallback) ──
-    OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen3.5:latest")
+    # ── Groq (Cloud Fallback) ──
+    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+    GROQ_BASE_URL: str = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
+    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
     # ── BigQuery ──
     GCP_PROJECT_ID: str = os.getenv("GCP_PROJECT_ID", "adk-mini-project")
