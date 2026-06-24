@@ -87,30 +87,14 @@ You must respond with ONLY a JSON array. No explanation.
 Available Indicators and required parameters:
 - live_pe: {{"operator": "<|>|=", "value": float}}
 - pe_below_sector_median: {{}}
-- margin_improving: {{"quarters": int, "metric": "operating|net"}}
+- margin_improving: {{"quarters": int}}
 - revenue_growth_yoy: {{"min_pct": float}}
-- eps_growth_yoy: {{"min_pct": float}}
-- net_profit_margin: {{"operator": "<|>", "value": float}}
-- promoter_holding_increasing: {{"quarters": int}}
-- fii_buying: {{"quarters": int, "min_increase_pct": float}}
-- dii_buying: {{"quarters": int}}
 - smart_money_inflow: {{"quarters": int}}
-- debt_to_equity: {{"operator": "<|>", "value": float}}
-- reserves_growing: {{"years": int}}
 - cfo_positive: {{}}
-- free_cash_flow_positive: {{"years": int}}
-- roce_above: {{"min_pct": float}}
-- roe_above: {{"min_pct": float}}
-- above_200_sma: {{}}
 - near_52_week_high: {{"within_pct": float}}
-- volume_spike: {{"multiplier": float, "avg_period_days": int}}
-- momentum_positive: {{"days": int, "min_return_pct": float}}
-- supertrend_bullish: {{"period": int, "multiplier": float}}
+- above_200_sma: {{"min_margin_pct": float}}
+- supertrend_bullish: {{"period": int}}
 - sector_filter: {{"value": "sector name"}}
-- market_cap_range: {{"min_cr": float, "max_cr": float}}
-- earnings_within_days: {{"days": int}}
-- npa_decreasing: {{"quarters": int}}
-- deposit_growth: {{"min_pct": float}}
 
 Example input: "IT stocks with P/E below 20 and positive cash flow"
 Example output: [

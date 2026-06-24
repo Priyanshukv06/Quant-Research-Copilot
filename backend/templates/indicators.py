@@ -39,6 +39,7 @@ INDICATOR_TEMPLATES: Dict[str, Dict[str, Any]] = {
     "pe_below_sector_median": {
         "description": "P/E ratio below the median P/E of its sector",
         "params": {},
+        "return_columns": ["pe_below_sector_median", "sector_median_pe"],
         "tables": ["daily_stock_price", "quarterly_results", "company_info"],
         "bq_template": """
             WITH ttm_eps AS (
@@ -61,7 +62,7 @@ INDICATOR_TEMPLATES: Dict[str, Dict[str, Any]] = {
                 JOIN `{project_id}.{dataset_fundamentals}.company_info` c USING(nse_symbol)
                 WHERE e.ttm_eps > 0
             )
-            SELECT nse_symbol, live_pe AS pe_below_sector_median FROM (
+            SELECT nse_symbol, live_pe AS pe_below_sector_median, median_pe AS sector_median_pe FROM (
                 SELECT nse_symbol, live_pe, 
                        PERCENTILE_CONT(live_pe, 0.5) OVER(PARTITION BY sector_classification) AS median_pe
                 FROM pe_data
@@ -109,15 +110,18 @@ INDICATOR_TEMPLATES: Dict[str, Dict[str, Any]] = {
                     END AS margin_pct
                 FROM `{project_id}.{dataset_fundamentals}.quarterly_results` q
                 JOIN `{project_id}.{dataset_fundamentals}.company_info` c USING(nse_symbol)
-            )
-            SELECT nse_symbol, margin_pct AS margin_improving FROM (
+            ),
+            lagged_margins AS (
                 SELECT nse_symbol, parsed_period, margin_pct,
-                    LAG(margin_pct) OVER (PARTITION BY nse_symbol ORDER BY parsed_period) AS prev_margin
+                    LAG(margin_pct) OVER (PARTITION BY nse_symbol ORDER BY parsed_period) AS prev_margin,
+                    ROW_NUMBER() OVER (PARTITION BY nse_symbol ORDER BY parsed_period DESC) AS rn
                 FROM margins
-                WHERE parsed_period >= DATE_SUB(CURRENT_DATE(), INTERVAL {quarters}*3+3 MONTH)
             )
+            SELECT nse_symbol, MAX(margin_pct) AS margin_improving FROM lagged_margins
+            WHERE rn <= {quarters}
             GROUP BY nse_symbol
-            HAVING COUNTIF(margin_pct > prev_margin) >= {quarters}
+            HAVING COUNTIF(margin_pct > prev_margin) = {quarters}
+            AND COUNT(*) = {quarters}
         """,
         "bank_compatible": True
     },
@@ -137,14 +141,17 @@ INDICATOR_TEMPLATES: Dict[str, Dict[str, Any]] = {
                     END AS revenue
                 FROM `{project_id}.{dataset_fundamentals}.quarterly_results` q
                 JOIN `{project_id}.{dataset_fundamentals}.company_info` c USING(nse_symbol)
-            )
-            SELECT nse_symbol, ((revenue - prev_year_revenue) / prev_year_revenue) * 100 AS revenue_growth_yoy FROM (
+            ),
+            lagged_revs AS (
                 SELECT nse_symbol, parsed_period, revenue,
-                    LAG(revenue, 4) OVER (PARTITION BY nse_symbol ORDER BY parsed_period) AS prev_year_revenue
+                    LAG(revenue, 4) OVER (PARTITION BY nse_symbol ORDER BY parsed_period) AS prev_year_revenue,
+                    ROW_NUMBER() OVER (PARTITION BY nse_symbol ORDER BY parsed_period DESC) AS rn
                 FROM revs
             )
-            WHERE prev_year_revenue > 0 
-            AND parsed_period = (SELECT MAX(parsed_period) FROM revs)
+            SELECT nse_symbol, ((revenue - prev_year_revenue) / prev_year_revenue) * 100 AS revenue_growth_yoy 
+            FROM lagged_revs
+            WHERE rn = 1
+            AND prev_year_revenue > 0 
             AND ((revenue - prev_year_revenue) / prev_year_revenue) * 100 > {min_pct}
         """,
         "bank_compatible": True
@@ -165,15 +172,20 @@ INDICATOR_TEMPLATES: Dict[str, Dict[str, Any]] = {
                     SAFE_CAST(REGEXP_REPLACE(FIIs, r'[^\\d.-]', '') AS FLOAT64) AS fii,
                     SAFE_CAST(REGEXP_REPLACE(DIIs, r'[^\\d.-]', '') AS FLOAT64) AS dii
                 FROM `{project_id}.{dataset_fundamentals}.shareholding_quarterly`
-            )
-            SELECT nse_symbol, CONCAT('FII:', CAST(fii AS STRING), '%, DII:', CAST(dii AS STRING), '%') AS smart_money_inflow FROM (
+            ),
+            lagged_holding AS (
                 SELECT nse_symbol, parsed_period, fii, dii,
                     LAG(fii) OVER (PARTITION BY nse_symbol ORDER BY parsed_period) AS prev_fii,
-                    LAG(dii) OVER (PARTITION BY nse_symbol ORDER BY parsed_period) AS prev_dii
+                    LAG(dii) OVER (PARTITION BY nse_symbol ORDER BY parsed_period) AS prev_dii,
+                    ROW_NUMBER() OVER (PARTITION BY nse_symbol ORDER BY parsed_period DESC) AS rn
                 FROM holding
             )
-            WHERE parsed_period = (SELECT MAX(parsed_period) FROM holding)
-            AND fii > prev_fii AND dii > prev_dii
+            SELECT nse_symbol, MAX(IF(rn = 1, CONCAT('FII:', CAST(fii AS STRING), '%, DII:', CAST(dii AS STRING), '%'), NULL)) AS smart_money_inflow 
+            FROM lagged_holding
+            WHERE rn <= {quarters}
+            GROUP BY nse_symbol
+            HAVING COUNTIF(fii > prev_fii AND dii > prev_dii) = {quarters}
+            AND COUNT(*) = {quarters}
         """,
         "bank_compatible": True
     },
@@ -206,8 +218,8 @@ INDICATOR_TEMPLATES: Dict[str, Dict[str, Any]] = {
     },
 
     "above_200_sma": {
-        "description": "Price trading above 200-day SMA",
-        "params": {},
+        "description": "Price trading above 200-day SMA by a specific percentage margin",
+        "params": {"min_margin_pct": "float (default: 0.0)"},
         "tables": ["daily_stock_price"],
         "bq_template": """
             WITH moving_avg AS (
@@ -218,7 +230,7 @@ INDICATOR_TEMPLATES: Dict[str, Dict[str, Any]] = {
             SELECT nse_symbol, close AS above_200_sma
             FROM moving_avg
             WHERE date = (SELECT MAX(date) FROM `{project_id}.{dataset_technicals}.daily_stock_price`)
-            AND close > sma_200
+            AND close >= sma_200 * (1 + {min_margin_pct} / 100.0)
         """,
         "bank_compatible": True
     },
@@ -228,8 +240,6 @@ INDICATOR_TEMPLATES: Dict[str, Dict[str, Any]] = {
         "params": {"period": "int (default: 10)", "multiplier": "float (default: 3)"},
         "tables": ["daily_stock_price"],
         "bq_template": """
-            -- Simplified Supertrend approximation for BigQuery
-            -- Calculates ATR and compares Close to Upper/Lower Bands
             WITH ohlcv AS (
                 SELECT symbol AS nse_symbol, date, high, low, close,
                     LAG(close) OVER (PARTITION BY symbol ORDER BY date) as prev_close
@@ -246,13 +256,18 @@ INDICATOR_TEMPLATES: Dict[str, Dict[str, Any]] = {
             ),
             atr AS (
                 SELECT nse_symbol, date, close,
-                    AVG(tr_val) OVER (PARTITION BY nse_symbol ORDER BY date ROWS BETWEEN {period}-1 PRECEDING AND CURRENT ROW) as atr_val,
+                    AVG(tr_val) OVER (PARTITION BY nse_symbol ORDER BY date ROWS BETWEEN {period_minus_one} PRECEDING AND CURRENT ROW) as atr_val,
                     (high + low) / 2 as hl2
                 FROM tr
+            ),
+            lagged_atr AS (
+                SELECT nse_symbol, close, hl2, atr_val,
+                    ROW_NUMBER() OVER (PARTITION BY nse_symbol ORDER BY date DESC) AS rn
+                FROM atr
             )
             SELECT nse_symbol, close AS supertrend_bullish
-            FROM atr
-            WHERE date = (SELECT MAX(date) FROM atr)
+            FROM lagged_atr
+            WHERE rn = 1
             AND close > (hl2 - ({multiplier} * atr_val))
         """,
         "bank_compatible": True
@@ -299,6 +314,15 @@ def build_query(indicator_id: str, params: Dict[str, Any], config_vars: Dict[str
             
         if "value" not in params:
              raise ValueError("live_pe requires a 'value' parameter")
+             
+    if indicator_id == "supertrend_bullish":
+        if "multiplier" not in params:
+            params["multiplier"] = 3.0
+        if "period" not in params:
+            params["period"] = 10
+        
+        # BigQuery does not allow expressions like '7-1' in ROWS BETWEEN, it must be a literal.
+        params["period_minus_one"] = int(params["period"]) - 1
     # ----------------------------------------------------
     
     # Merge config vars and LLM params

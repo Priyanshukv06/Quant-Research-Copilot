@@ -78,8 +78,13 @@ class ScreenerAgent:
                 alias = f"t{idx}"
                 cte_aliases.append(f"({sql}) {alias}")
                 
-                select_cols.append(f"{alias}.{ind['id']}")
+                # Fetch return columns defined in template, default to just the indicator ID
+                from templates.indicators import INDICATOR_TEMPLATES
+                template = INDICATOR_TEMPLATES.get(ind["id"], {})
+                ret_cols = template.get("return_columns", [ind['id']])
                 
+                for col in ret_cols:
+                    select_cols.append(f"{alias}.{col}")
                 if idx > 0:
                     join_clauses.append(f"INNER JOIN {cte_aliases[idx]} ON t0.nse_symbol = {alias}.nse_symbol")
                 
