@@ -20,11 +20,6 @@ services:
       - key: GOOGLE_APPLICATION_CREDENTIALS
         value: /etc/secrets/service-account.json
 
-    # This creates a secure vault for your BigQuery JSON file
-    secretFiles:
-      - name: service-account.json
-        file: /etc/secrets/service-account.json
-
   # ------------------------------------------------------------
   # 2. NEXT.JS FRONTEND SERVICE
   # ------------------------------------------------------------
