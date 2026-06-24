@@ -97,6 +97,7 @@ async def process_query(req: QueryRequest):
 
 import os
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 @app.get("/health")
 def health_check():
@@ -106,7 +107,26 @@ def health_check():
 frontend_out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../frontend/out")
 if os.path.exists(frontend_out):
     logger.info(f"Serving frontend from {frontend_out}")
-    app.mount("/", StaticFiles(directory=frontend_out, html=True), name="frontend")
+    
+    # Serve Next.js static assets (_next/*, images, etc.)
+    app.mount("/_next", StaticFiles(directory=os.path.join(frontend_out, "_next")), name="next-assets")
+    
+    # Catch-all: serve the matching HTML file or fall back to index.html
+    # This ensures page refreshes on /screener, /news, /report all work
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        # Try the exact path as a directory with index.html (trailingSlash: true)
+        index_path = os.path.join(frontend_out, full_path, "index.html")
+        if os.path.isfile(index_path):
+            return FileResponse(index_path, media_type="text/html")
+        
+        # Try as a direct file (e.g. favicon.ico, manifest.json)
+        file_path = os.path.join(frontend_out, full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        
+        # Fallback: serve root index.html and let Next.js client router handle it
+        return FileResponse(os.path.join(frontend_out, "index.html"), media_type="text/html")
 else:
     logger.warning("Frontend build directory not found. API only mode.")
 
