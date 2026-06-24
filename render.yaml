@@ -10,12 +10,31 @@ services:
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     
     envVars:
-      # These will prompt you to enter them in the Render Dashboard securely
-      - key: OPENAI_API_KEY
+      # ── NVIDIA NIM (Primary LLM) ──
+      - key: NVIDIA_API_KEY
         sync: false
-      - key: SERPER_API_KEY
-        sync: false
-        
+      - key: NVIDIA_BASE_URL
+        value: https://integrate.api.nvidia.com/v1
+      - key: NVIDIA_MODEL
+        value: google/diffusiongemma-26b-a4b-it
+
+      # ── Ollama (Local Fallback) ──
+      - key: OLLAMA_BASE_URL
+        value: http://localhost:11434
+      - key: OLLAMA_MODEL
+        value: qwen3.5:latest
+
+      # ── BigQuery Settings ──
+      - key: GCP_PROJECT_ID
+        value: adk-mini-project
+      - key: BQ_DATASET_FUNDAMENTALS
+        value: fundamentals
+      - key: BQ_DATASET_TECHNICALS
+        value: technicals
+      - key: BQ_DATASET_EARNINGS
+        value: earnings
+      - key: BQ_DATASET_STOCKS
+        value: stocks
       # This points Google Cloud SDK to the Secret File we define below
       - key: GOOGLE_APPLICATION_CREDENTIALS
         value: /etc/secrets/service-account.json
