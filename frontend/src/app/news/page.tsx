@@ -181,7 +181,7 @@ export default function NewsPage() {
   const sourcesUsed: string[] = Array.isArray(newsData?.sources_used) ? newsData.sources_used : [];
   const entityWarning: string = newsData?.entity_news?._warning || "";
   
-  const askedForSector = result?.data?.intent?.sector_filter || result?.data?.indicators_extracted?.some((ind: any) => ind.id === "sector_filter");
+  const askedForSector = result?.data?.intent?.sector_filter || (result?.data as any)?.indicators_extracted?.some((ind: any) => ind.id === "sector_filter");
   const shouldShowSector = sectorNews.length > 0 || !!askedForSector;
   
   const intentData = result?.data?.intent;
