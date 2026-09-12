@@ -14,73 +14,228 @@
 
 .subtitle {
   color: var(--text-secondary);
+  line-height: 1.6;
 }
+
+
+/* ── Error & Warning banners ── */
+
+.errorBanner {
+  color: var(--accent-rose);
+  background: rgba(244, 63, 94, 0.08);
+  border: 1px solid rgba(244, 63, 94, 0.2);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+.warningBanner {
+  color: var(--accent-amber, #f59e0b);
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+
+/* ── Sections container ── */
+
+.newsContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.section {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 1rem;
+}
+
+.section:last-child {
+  border-bottom: none;
+}
+
+
+/* ── Collapsible section header ── */
+
+.sectionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.75rem 0;
+  text-align: left;
+  transition: opacity 0.2s ease;
+}
+
+.sectionHeader:hover {
+  opacity: 0.85;
+}
+
+.sectionTitle {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: var(--accent-primary, #6366f1);
+  color: white;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+}
+
+.sectionSubtitle {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 0.15rem;
+}
+
+.chevron {
+  font-size: 1.2rem;
+  color: var(--text-muted);
+  transition: transform 0.25s ease;
+  transform: rotate(0deg);
+}
+
+.chevronOpen {
+  transform: rotate(90deg);
+}
+
+
+/* ── News grid ── */
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-  gap: 1.5rem;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 1.25rem;
+  margin-top: 1rem;
+  animation: fadeIn 0.3s ease;
 }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+
+/* ── Individual article card ── */
 
 .newsCard {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.75rem;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.newsCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
 }
 
 .newsHeader {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  gap: 1rem;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .source {
-  font-size: 0.75rem;
-  color: var(--text-muted);
+  font-size: 0.7rem;
+  color: var(--accent-cyan, #22d3ee);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-weight: 600;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  background: rgba(6, 182, 212, 0.08);
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  border: 1px solid rgba(6, 182, 212, 0.15);
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.date {
-  font-size: 0.75rem;
+.freshness {
+  font-size: 0.7rem;
   color: var(--text-muted);
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .newsTitle {
-  font-size: 1.1rem;
+  font-size: 1.05rem;
   font-weight: 600;
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
 .newsTitle a {
   color: var(--text-primary);
+  text-decoration: none;
+  transition: color 0.15s ease;
 }
 
 .newsTitle a:hover {
   color: var(--accent-cyan);
 }
 
-.summary {
-  font-size: 0.9rem;
+.description {
+  font-size: 0.85rem;
   color: var(--text-secondary);
-  flex: 1;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
+
+.summary {
+  font-size: 0.8rem;
+  color: var(--accent-primary, #a78bfa);
+  background: rgba(139, 92, 246, 0.06);
+  border-left: 2px solid rgba(139, 92, 246, 0.3);
+  padding: 0.4rem 0.6rem;
+  border-radius: 0 4px 4px 0;
+  line-height: 1.45;
+  font-style: italic;
+}
+
+.summaryLabel {
+  font-weight: 700;
+  font-style: normal;
+  color: var(--accent-primary, #a78bfa);
+  margin-right: 0.25rem;
+}
+
+
+/* ── Tags ── */
 
 .tags {
   display: flex;
   gap: 0.5rem;
-  margin-top: 1rem;
+  margin-top: auto;
   flex-wrap: wrap;
 }
 
 .tag {
-  font-size: 0.7rem;
-  padding: 0.25rem 0.5rem;
+  font-size: 0.65rem;
+  padding: 0.2rem 0.5rem;
   border-radius: 4px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .tagPositive {

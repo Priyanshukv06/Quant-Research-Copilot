@@ -16,11 +16,16 @@ INDICATOR_TEMPLATES: Dict[str, Dict[str, Any]] = {
         "params": {"operator": ["<", ">", "between"], "value": "float"},
         "tables": ["daily_stock_price", "quarterly_results"],
         "bq_template": """
-            WITH ttm_eps AS (
+            WITH recent_quarters AS (
                 SELECT nse_symbol,
-                    SUM(SAFE_CAST(REGEXP_REPLACE(CAST(EPS_in_Rs AS STRING), r'[^\\d.-]', '') AS FLOAT64)) AS ttm_eps
+                    SAFE_CAST(REGEXP_REPLACE(CAST(EPS_in_Rs AS STRING), r'[^\\d.-]', '') AS FLOAT64) AS eps,
+                    ROW_NUMBER() OVER (PARTITION BY nse_symbol ORDER BY PARSE_DATE('%b %Y', Period) DESC) as rn
                 FROM `{project_id}.{dataset_fundamentals}.quarterly_results`
-                WHERE PARSE_DATE('%b %Y', Period) >= DATE_SUB(CURRENT_DATE(), INTERVAL 15 MONTH)
+            ),
+            ttm_eps AS (
+                SELECT nse_symbol, SUM(eps) AS ttm_eps
+                FROM recent_quarters
+                WHERE rn <= 4
                 GROUP BY nse_symbol
                 HAVING COUNT(*) = 4
             ),
@@ -42,11 +47,16 @@ INDICATOR_TEMPLATES: Dict[str, Dict[str, Any]] = {
         "return_columns": ["pe_below_sector_median", "sector_median_pe"],
         "tables": ["daily_stock_price", "quarterly_results", "company_info"],
         "bq_template": """
-            WITH ttm_eps AS (
+            WITH recent_quarters AS (
                 SELECT nse_symbol,
-                    SUM(SAFE_CAST(REGEXP_REPLACE(CAST(EPS_in_Rs AS STRING), r'[^\\d.-]', '') AS FLOAT64)) AS ttm_eps
+                    SAFE_CAST(REGEXP_REPLACE(CAST(EPS_in_Rs AS STRING), r'[^\\d.-]', '') AS FLOAT64) AS eps,
+                    ROW_NUMBER() OVER (PARTITION BY nse_symbol ORDER BY PARSE_DATE('%b %Y', Period) DESC) as rn
                 FROM `{project_id}.{dataset_fundamentals}.quarterly_results`
-                WHERE PARSE_DATE('%b %Y', Period) >= DATE_SUB(CURRENT_DATE(), INTERVAL 15 MONTH)
+            ),
+            ttm_eps AS (
+                SELECT nse_symbol, SUM(eps) AS ttm_eps
+                FROM recent_quarters
+                WHERE rn <= 4
                 GROUP BY nse_symbol
                 HAVING COUNT(*) = 4
             ),

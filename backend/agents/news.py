@@ -1,116 +1,321 @@
-import logging
-import feedparser
-import urllib.parse
-from typing import List, Dict, Any
+"""
+News Agent v2 — Multi-source intelligence pipeline.
 
+Replaces the original single-source RSS scraper with:
+  1. Multi-source aggregation (RSS + API)
+  2. Parallel fetching via asyncio.gather
+  3. Fuzzy title deduplication (difflib, stdlib)
+  4. Batch LLM classification (single call for all articles)
+  5. In-memory TTL cache (avoids redundant API + LLM calls)
+  6. Always-on macro context baseline
+"""
+
+import asyncio
+import hashlib
+import logging
+import time
+from difflib import SequenceMatcher
+from typing import Any, Dict, List, Optional
+
+from config import settings
 from llm.provider import llm
-from llm.prompts import NEWS_RELEVANCE_SYSTEM, NEWS_RELEVANCE_USER
+from llm.prompts import (
+    NEWS_BATCH_CLASSIFY_SYSTEM,
+    NEWS_BATCH_CLASSIFY_USER,
+    NEWS_RELEVANCE_SYSTEM,
+    NEWS_RELEVANCE_USER,
+)
+from agents.sources import Article, build_source_registry
 
 logger = logging.getLogger(__name__)
 
-class NewsAgent:
-    def __init__(self):
-        # We will use Google News RSS as the primary feed for arbitrary queries
-        self.google_news_base = "https://news.google.com/rss/search?q={query}&hl=en-IN&gl=IN&ceid=IN:en"
-        # ET Markets RSS for broad market updates
-        self.et_markets_rss = "https://economictimes.indiatimes.com/markets/rssfeeds/2146842.cms"
 
-    def fetch_rss(self, query: str = None, limit: int = 5) -> List[Dict[str, str]]:
-        """
-        Fetches the top `limit` articles from RSS for a given query.
-        If no query is provided, fetches general ET Markets news.
-        """
-        if query:
-            encoded_query = urllib.parse.quote(query + " stock market India")
-            url = self.google_news_base.format(query=encoded_query)
-            source = "Google News"
-        else:
-            url = self.et_markets_rss
-            source = "ET Markets"
-            
-        logger.info(f"Fetching RSS from {source}: {url}")
-        
-        try:
-            feed = feedparser.parse(url)
-            articles = []
-            for entry in feed.entries[:limit]:
-                articles.append({
-                    "title": entry.get("title", ""),
-                    "link": entry.get("link", ""),
-                    "published": entry.get("published", ""),
-                    "source": source
-                })
-            return articles
-        except Exception as e:
-            logger.error(f"Failed to fetch RSS: {e}")
+# ──────────────────────────────────────────────
+# In-memory TTL cache
+# ──────────────────────────────────────────────
+
+class _NewsCache:
+    """Simple dict-based cache with per-key TTL expiry."""
+
+    def __init__(self, ttl_seconds: int = 900):
+        self._store: Dict[str, tuple[float, Any]] = {}
+        self.ttl = ttl_seconds
+
+    def get(self, key: str) -> Optional[Any]:
+        entry = self._store.get(key)
+        if entry and (time.time() - entry[0]) < self.ttl:
+            logger.info("Cache HIT for key=%s", key[:12])
+            return entry[1]
+        if entry:
+            del self._store[key]
+        return None
+
+    def set(self, key: str, value: Any) -> None:
+        self._store[key] = (time.time(), value)
+
+    @staticmethod
+    def make_key(*args) -> str:
+        raw = "|".join(str(a) for a in args)
+        return hashlib.md5(raw.encode()).hexdigest()
+
+
+# ──────────────────────────────────────────────
+# Deduplication
+# ──────────────────────────────────────────────
+
+def _deduplicate(articles: List[Article], threshold: float = 0.75) -> List[Article]:
+    """
+    Remove near-duplicate articles using title similarity.
+    Uses difflib.SequenceMatcher (stdlib, no extra deps).
+    Keeps the first occurrence (typically from the highest-priority source).
+    """
+    unique: List[Article] = []
+    for art in articles:
+        is_dup = False
+        title_lower = art.title.lower().strip()
+        for existing in unique:
+            ratio = SequenceMatcher(
+                None, title_lower, existing.title.lower().strip()
+            ).ratio()
+            if ratio >= threshold:
+                is_dup = True
+                break
+        if not is_dup:
+            unique.append(art)
+    return unique
+
+
+# ──────────────────────────────────────────────
+# News Agent v2
+# ──────────────────────────────────────────────
+
+class NewsAgent:
+    """
+    Multi-source news intelligence pipeline.
+
+    Fetches from RSS + API sources in parallel, deduplicates, classifies
+    via a single batch LLM call, and caches results.
+    """
+
+    def __init__(self):
+        self.sources = build_source_registry(
+            gnews_key=getattr(settings, "GNEWS_API_KEY", ""),
+            newsdata_key=getattr(settings, "NEWSDATA_API_KEY", ""),
+        )
+        self.cache = _NewsCache(
+            ttl_seconds=getattr(settings, "NEWS_CACHE_TTL_SECONDS", 900)
+        )
+        active = [s.name for s in self.sources if s.is_available()]
+        logger.info("NewsAgent v2 initialized — sources: %s", ", ".join(active))
+
+    # ── parallel multi-source fetch ──────────────────────────
+
+    async def _fetch_from_all(self, query: str, limit_per_source: int = 5) -> List[Article]:
+        """Hit every active source in parallel and merge results."""
+        tasks = [
+            source.fetch(query, limit=limit_per_source)
+            for source in self.sources
+            if source.is_available()
+        ]
+        if not tasks:
+            logger.warning("No news sources available")
             return []
 
-    async def classify_article(self, target: str, article: Dict[str, str]) -> Dict[str, Any]:
-        """
-        Uses the LLM to classify an article's relevance and sentiment.
-        """
-        messages = [
-            {"role": "system", "content": NEWS_RELEVANCE_SYSTEM},
-            {"role": "user", "content": NEWS_RELEVANCE_USER.format(
-                target=target,
-                title=article["title"],
-                source=article["source"],
-                snippet="" # RSS usually just has title/link, so snippet is empty unless we scrape
-            )}
-        ]
-        
-        try:
-            classification = await llm.generate_json(messages, temperature=0.2)
-            # Merge classification with the original article
-            return {**article, **classification}
-        except Exception as e:
-            logger.error(f"Failed to classify article '{article['title']}': {e}")
-            return {**article, "relevant": False, "error": str(e)}
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def get_intelligence(self, symbols: List[str], sector: str = None) -> Dict[str, Any]:
+        all_articles: List[Article] = []
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                logger.error("Source fetch error: %s", result)
+                continue
+            all_articles.extend(result)
+
+        logger.info(
+            "Fetched %d raw articles from %d sources",
+            len(all_articles), len(tasks)
+        )
+        return all_articles
+
+    # ── batch LLM classification ─────────────────────────────
+
+    async def _batch_classify(
+        self, target: str, articles: List[Article]
+    ) -> List[Dict[str, Any]]:
         """
-        Master orchestration function for fetching and classifying news.
-        Enforces the 3-stock limit rule to prevent API burnout.
+        Classify ALL articles in a single LLM call instead of one-per-article.
+
+        Falls back to per-article classification if batch fails
+        (e.g., too many articles for context window).
         """
-        news_results = {
+        if not articles:
+            return []
+
+        # Build the numbered article list for the batch prompt
+        article_entries = []
+        for i, art in enumerate(articles, 1):
+            snippet = art.description[:200] if art.description else "(no description)"
+            article_entries.append(
+                f"{i}. [{art.source_name}] {art.title}\n   {snippet}"
+            )
+        articles_text = "\n".join(article_entries)
+
+        messages = [
+            {"role": "system", "content": NEWS_BATCH_CLASSIFY_SYSTEM},
+            {"role": "user", "content": NEWS_BATCH_CLASSIFY_USER.format(
+                target=target,
+                articles=articles_text,
+                count=len(articles),
+            )},
+        ]
+
+        try:
+            classifications = await llm.generate_json(messages, temperature=0.2)
+
+            # Expect a list of {index, relevant, sentiment, category, summary}
+            if not isinstance(classifications, list):
+                # Sometimes LLM wraps in {"articles": [...]}
+                if isinstance(classifications, dict) and "articles" in classifications:
+                    classifications = classifications["articles"]
+                else:
+                    raise ValueError("LLM returned non-list for batch classify")
+
+            # Merge classifications with article data
+            classified = []
+            for entry in classifications:
+                idx = entry.get("index", 0) - 1  # 1-indexed in prompt
+                if 0 <= idx < len(articles):
+                    art = articles[idx]
+                    classified.append({
+                        **art.to_dict(),
+                        "relevant": entry.get("relevant", False),
+                        "sentiment": entry.get("sentiment", "NEUTRAL"),
+                        "category": entry.get("category", "OTHER"),
+                        "summary": entry.get("summary", art.title),
+                    })
+
+            logger.info(
+                "Batch classified %d articles, %d relevant",
+                len(articles),
+                sum(1 for c in classified if c.get("relevant")),
+            )
+            return [c for c in classified if c.get("relevant", False)]
+
+        except Exception as e:
+            logger.warning("Batch classification failed (%s), falling back to per-article", e)
+            return await self._per_article_classify(target, articles)
+
+    async def _per_article_classify(
+        self, target: str, articles: List[Article]
+    ) -> List[Dict[str, Any]]:
+        """
+        Fallback: classify each article individually (original v1 approach).
+        Used when batch classification fails.
+        """
+        classified = []
+        for art in articles:
+            messages = [
+                {"role": "system", "content": NEWS_RELEVANCE_SYSTEM},
+                {"role": "user", "content": NEWS_RELEVANCE_USER.format(
+                    target=target,
+                    title=art.title,
+                    source=art.source_name,
+                    snippet=art.description[:200] if art.description else "",
+                )},
+            ]
+            try:
+                result = await llm.generate_json(messages, temperature=0.2)
+                if result.get("relevant", False):
+                    classified.append({**art.to_dict(), **result})
+            except Exception as e:
+                logger.error("Per-article classify failed for '%s': %s", art.title[:40], e)
+
+        return classified
+
+    # ── main orchestration ───────────────────────────────────
+
+    async def get_intelligence(
+        self,
+        symbols: List[str] = None,
+        sector: str = None,
+    ) -> Dict[str, Any]:
+        """
+        Master orchestration: fetch + deduplicate + classify news at three levels.
+
+        Levels:
+          - entity_news:  per-symbol (max 3 symbols to conserve API)
+          - sector_news:  sector-level context
+          - macro_news:   always-on market baseline (even when symbols/sector given)
+
+        All results are cached by query signature for NEWS_CACHE_TTL_SECONDS.
+        """
+        symbols = symbols or []
+        cache_key = self.cache.make_key("intel", sorted(symbols), sector)
+        cached = self.cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        news_results: Dict[str, Any] = {
             "entity_news": {},
             "sector_news": [],
-            "macro_news": []
+            "macro_news": [],
+            "sources_used": [],
         }
-        
-        # 1. Fetch Entity-Level News (only if <= 3 symbols)
+
+        active_sources = [s.name for s in self.sources if s.is_available()]
+        news_results["sources_used"] = active_sources
+
+        # ── 1. Entity-level news (per-symbol, max 3) ──
         if symbols and len(symbols) <= 3:
             for sym in symbols:
-                articles = self.fetch_rss(query=sym, limit=3)
-                classified = []
-                for art in articles:
-                    res = await self.classify_article(target=sym, article=art)
-                    if res.get("relevant", False):
-                        classified.append(res)
+                query = f"{sym} stock India"
+                raw = await self._fetch_from_all(query, limit_per_source=3)
+                deduped = _deduplicate(raw)
+                classified = await self._batch_classify(target=sym, articles=deduped)
                 news_results["entity_news"][sym] = classified
         elif symbols and len(symbols) > 3:
-            news_results["entity_news"]["_warning"] = f"Skipped entity-level news for {len(symbols)} stocks to conserve API limits."
+            news_results["entity_news"]["_warning"] = (
+                f"Skipped entity-level news for {len(symbols)} stocks "
+                "to conserve API limits. Showing sector/macro only."
+            )
 
-        # 2. Fetch Sector-Level News
+        # ── 2. Sector-level news ──
         if sector:
-            articles = self.fetch_rss(query=f"{sector} sector", limit=4)
-            classified = []
-            for art in articles:
-                res = await self.classify_article(target=sector, article=art)
-                if res.get("relevant", False):
-                    classified.append(res)
+            query = f"{sector} sector India stock market"
+            raw = await self._fetch_from_all(query, limit_per_source=4)
+            deduped = _deduplicate(raw)
+            classified = await self._batch_classify(target=sector, articles=deduped)
             news_results["sector_news"] = classified
-            
-        # 3. Fetch Macro-Level News (if no symbols/sector, or just as a baseline)
-        if not symbols and not sector:
-            articles = self.fetch_rss(limit=5) # uses ET Markets
-            classified = []
-            for art in articles:
-                res = await self.classify_article(target="Indian Stock Market", article=art)
-                if res.get("relevant", False):
-                    classified.append(res)
-            news_results["macro_news"] = classified
 
+        # ── 3. Macro-level news (ALWAYS fetched as baseline) ──
+        query = "Indian stock market Sensex Nifty"
+        raw = await self._fetch_from_all(query, limit_per_source=3)
+        deduped = _deduplicate(raw)
+        classified = await self._batch_classify(
+            target="Indian Stock Market", articles=deduped
+        )
+        news_results["macro_news"] = classified
+
+        # Cache the assembled result
+        self.cache.set(cache_key, news_results)
+
+        _log_summary(news_results)
         return news_results
 
+
+def _log_summary(results: Dict[str, Any]) -> None:
+    """Log a compact summary of what the news pipeline returned."""
+    entity_count = sum(
+        len(v) for k, v in results.get("entity_news", {}).items()
+        if isinstance(v, list)
+    )
+    sector_count = len(results.get("sector_news", []))
+    macro_count = len(results.get("macro_news", []))
+    logger.info(
+        "News intelligence summary — entity: %d, sector: %d, macro: %d, sources: %s",
+        entity_count, sector_count, macro_count,
+        ", ".join(results.get("sources_used", [])),
+    )
+
+
+# Singleton
 news_agent = NewsAgent()

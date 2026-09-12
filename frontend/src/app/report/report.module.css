@@ -14,7 +14,145 @@
 
 .subtitle {
   color: var(--text-secondary);
+  line-height: 1.6;
 }
+
+/* ── Metadata Bar ── */
+
+.metadataBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  padding: 1rem 1.5rem;
+  border-left: 3px solid var(--accent-cyan);
+}
+
+.metaItem {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.metaLabel {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.metaValue {
+  font-size: 0.95rem;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* ── Signal Cards ── */
+
+.signalRow {
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+}
+
+.signalCard {
+  flex: 0 0 auto;
+  min-width: 220px;
+  max-width: 280px;
+  padding: 1rem 1.25rem;
+  border-radius: 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  transition: all var(--transition-smooth);
+}
+
+.signalCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.signalStrong {
+  border-left: 3px solid #10b981;
+}
+
+.signalWatch {
+  border-left: 3px solid #eab308;
+}
+
+.signalCaution {
+  border-left: 3px solid #f43f5e;
+}
+
+.signalHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.signalEmoji {
+  font-size: 1.2rem;
+}
+
+.signalSymbol {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--text-primary);
+}
+
+.signalLabel {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+.signalSummary {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.riskFlags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.riskTag {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  background: rgba(244, 63, 94, 0.15);
+  color: #f43f5e;
+  border: 1px solid rgba(244, 63, 94, 0.3);
+}
+
+/* ── Banners ── */
+
+.errorBanner {
+  padding: 1rem 1.5rem;
+  border-radius: 10px;
+  background: rgba(244, 63, 94, 0.1);
+  border: 1px solid rgba(244, 63, 94, 0.3);
+  color: #f43f5e;
+  margin-bottom: 1rem;
+}
+
+.infoBanner {
+  padding: 1rem 1.5rem;
+  border-radius: 10px;
+  background: rgba(6, 182, 212, 0.08);
+  border: 1px solid rgba(6, 182, 212, 0.25);
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+  line-height: 1.6;
+}
+
+/* ── Report Layout ── */
 
 .layout {
   display: grid;
@@ -83,6 +221,27 @@
   color: #fff;
 }
 
+.markdownContainer blockquote {
+  border-left: 3px solid var(--accent-cyan);
+  padding: 0.5rem 1rem;
+  margin: 1rem 0;
+  color: var(--text-secondary);
+  background: rgba(6, 182, 212, 0.05);
+  border-radius: 0 8px 8px 0;
+}
+
+.markdownContainer em {
+  color: var(--text-muted);
+}
+
+.markdownContainer hr {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 2rem 0;
+}
+
+/* ── Sidebar ── */
+
 .sidebarContainer {
   display: flex;
   flex-direction: column;
@@ -98,7 +257,17 @@
   .layout {
     grid-template-columns: 1fr;
   }
+
+  .signalRow {
+    flex-wrap: nowrap;
+  }
+
+  .metadataBar {
+    gap: 1rem;
+  }
 }
+
+/* ── PDF Mode ── */
 
 .plainPdfMode {
   display: block !important;
@@ -116,6 +285,12 @@
 
 .plainPdfMode :global(h1), .plainPdfMode :global(h2), .plainPdfMode :global(h3), .plainPdfMode :global(strong) {
   color: black !important;
+}
+
+.plainPdfMode :global(blockquote) {
+  color: #333 !important;
+  background: #f5f5f5 !important;
+  border-left-color: #333 !important;
 }
 
 .plainPdfMode :global(table) {

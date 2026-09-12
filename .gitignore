@@ -37,3 +37,8 @@ frontend/.env
 *credentials*.json
 *.pem
 *.key
+docs/
+
+# Reference project & conda env (local only)
+screencapture/
+genai-screener/

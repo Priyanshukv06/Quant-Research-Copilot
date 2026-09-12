@@ -1,164 +1,71 @@
-"""
-LLM Provider abstraction layer.
+"""LLM Provider — thin wrapper around the multi-provider router.
 
-Primary: NVIDIA NIM (DiffusionGemma 26B-A4B)
-Fallback: Ollama (local models) or other NVIDIA NIM models
-
-Uses the OpenAI-compatible API format that NVIDIA NIM supports.
+The public API (generate, generate_json) stays identical so no agent code changes.
+Internally, all calls are routed through RoutedLLMBackend which handles:
+  - 5 providers (Gemini, Groq, Mistral, NVIDIA, OpenRouter)
+  - Multiple API keys per provider with round-robin + failover rotation
+  - Priority-ordered fallback chain (strongest models first)
+  - Provider cooldowns on rate-limit / auth / server errors
 """
+
 import json
 import logging
-from typing import Optional
-
-import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+import re
 
 from config import settings
+from llm.router import RoutedLLMBackend
 
 logger = logging.getLogger(__name__)
 
+# Regex for cleaning <think> blocks from JSON responses
+_THINK_BLOCK = re.compile(r"<think>.*?</think>\s*", re.DOTALL | re.I)
+
 
 class LLMProvider:
-    """
-    Unified LLM provider that tries NVIDIA NIM first, then falls back to Ollama.
-    Uses raw HTTP requests for maximum compatibility with NVIDIA NIM's API.
-    """
+    """Unified LLM provider backed by a multi-provider router."""
 
     def __init__(self):
-        self._client = httpx.AsyncClient(timeout=120.0)
-        self.primary_model = settings.NVIDIA_MODEL
-        self.fallback_model = settings.GROQ_MODEL
-
-    async def close(self):
-        await self._client.aclose()
-
-    @retry(
-        stop=stop_after_attempt(2),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception_type((httpx.HTTPError, httpx.TimeoutException)),
-    )
-    async def _call_nvidia_nim(
-        self,
-        messages: list[dict],
-        temperature: float = settings.TEMPERATURE,
-        max_tokens: int = settings.MAX_TOKENS,
-        model: Optional[str] = None,
-        enable_thinking: bool = False,
-    ) -> str:
-        """Call NVIDIA NIM API (OpenAI-compatible format)."""
-        payload = {
-            "model": model or self.primary_model,
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            "top_p": settings.TOP_P,
-            "stream": False,
-        }
-
-        # Enable thinking mode for DiffusionGemma
-        if enable_thinking:
-            payload["chat_template_kwargs"] = {"enable_thinking": True}
-
-        headers = {
-            "Authorization": f"Bearer {settings.NVIDIA_API_KEY}",
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-        }
-
-        response = await self._client.post(
-            f"{settings.NVIDIA_BASE_URL}/chat/completions",
-            headers=headers,
-            json=payload,
-        )
-        response.raise_for_status()
-        data = response.json()
-
-        content = data["choices"][0]["message"]["content"]
+        self.router = RoutedLLMBackend()
+        configured = self.router.configured_providers()
         logger.info(
-            f"NVIDIA NIM response: model={model or self.primary_model}, "
-            f"tokens_used={data.get('usage', {}).get('total_tokens', '?')}"
+            "LLM Router initialized with %d providers: %s",
+            len(configured), ", ".join(configured) if configured else "(none)"
         )
-        return content
-
-    async def _call_groq(
-        self,
-        messages: list[dict],
-        temperature: float = settings.TEMPERATURE,
-        max_tokens: int = settings.MAX_TOKENS,
-        model: Optional[str] = None,
-    ) -> str:
-        """Call Groq Cloud API (OpenAI-compatible format)."""
-        payload = {
-            "model": model or self.fallback_model,
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            "stream": False,
-        }
-
-        headers = {
-            "Authorization": f"Bearer {settings.GROQ_API_KEY}",
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-        }
-
-        response = await self._client.post(
-            f"{settings.GROQ_BASE_URL}/chat/completions",
-            headers=headers,
-            json=payload,
-        )
-        response.raise_for_status()
-        data = response.json()
-
-        content = data["choices"][0]["message"]["content"]
-        logger.info(f"Groq response: model={model or self.fallback_model}")
-        return content
+        available = self.router.available_models()
+        if available:
+            logger.info(
+                "Model chain (%d models): %s",
+                len(available),
+                " → ".join(f"{m.name}" for m in self.router.chain())
+            )
 
     async def generate(
         self,
         messages: list[dict],
         temperature: float = settings.TEMPERATURE,
         max_tokens: int = settings.MAX_TOKENS,
-        enable_thinking: bool = False,
+        enable_thinking: bool = False,  # kept for API compat, now a no-op
     ) -> str:
-        """
-        Generate a response using the LLM with automatic fallback.
-        
-        Tries NVIDIA NIM first, falls back to Groq on failure.
-        """
-        # Try NVIDIA NIM first
-        try:
-            return await self._call_nvidia_nim(
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                enable_thinking=enable_thinking,
-            )
-        except Exception as e:
-            logger.warning(f"NVIDIA NIM failed: {e}. Falling back to Groq.")
+        """Generate a response using the LLM router with automatic fallback.
 
-        # Fallback to Groq
-        try:
-            return await self._call_groq(
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
-        except Exception as e:
-            logger.error(f"Groq also failed: {e}")
-            raise RuntimeError(
-                "All LLM providers failed. Ensure NVIDIA NIM or GROQ API keys are valid."
-            ) from e
+        The `enable_thinking` parameter is retained for backward compatibility
+        but is now a no-op — the router handles <think> block stripping
+        automatically for any reasoning model.
+        """
+        return await self.router.route(
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
 
     async def generate_json(
         self,
         messages: list[dict],
-        temperature: float = 0.1,  # Low temp for structured output
+        temperature: float = 0.1,
         max_tokens: int = settings.MAX_TOKENS,
     ) -> dict:
-        """
-        Generate a response and parse it as JSON.
-        
+        """Generate a response and parse it as JSON.
+
         Uses low temperature for deterministic structured output.
         Handles cases where the LLM wraps JSON in markdown code blocks.
         """
@@ -166,7 +73,6 @@ class LLMProvider:
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
-            enable_thinking=False,  # Thinking mode can pollute JSON
         )
 
         # Clean up common LLM artifacts around JSON
@@ -174,9 +80,11 @@ class LLMProvider:
 
         # Handle <think>...</think> blocks from reasoning models
         if "<think>" in cleaned:
-            think_end = cleaned.rfind("</think>")
-            if think_end != -1:
-                cleaned = cleaned[think_end + len("</think>"):].strip()
+            cleaned = _THINK_BLOCK.sub("", cleaned).strip()
+            # Handle orphan <think> (unterminated)
+            if "<think>" in cleaned.lower():
+                think_start = cleaned.lower().find("<think>")
+                cleaned = cleaned[:think_start].strip()
 
         # Remove markdown code fences
         if cleaned.startswith("```json"):
@@ -194,6 +102,14 @@ class LLMProvider:
             # Try to extract JSON from the response
             start = cleaned.find("{")
             end = cleaned.rfind("}") + 1
+            if start != -1 and end > start:
+                try:
+                    return json.loads(cleaned[start:end])
+                except json.JSONDecodeError:
+                    pass
+            # Try array extraction for screener slot-fill responses
+            start = cleaned.find("[")
+            end = cleaned.rfind("]") + 1
             if start != -1 and end > start:
                 try:
                     return json.loads(cleaned[start:end])

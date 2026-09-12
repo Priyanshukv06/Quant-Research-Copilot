@@ -71,10 +71,13 @@ async def process_query(req: QueryRequest):
                     screened_data=screen_result.get("symbols", []), 
                     news_data=data["news"]
                 )
-                data["report_markdown"] = await report_agent.generate_report(
+                report_result = await report_agent.generate_report(
                     query=req.query, 
-                    synthesis_data=data["synthesis"]
+                    synthesis_data=data["synthesis"],
+                    screened_data=screen_result.get("symbols", []),
                 )
+                data["report_markdown"] = report_result.get("markdown", "")
+                data["report_metadata"] = report_result.get("metadata", {})
             
             # 4. Generate Visualization Charts for any screen action
             data["charts"] = visualizer.generate_comparison_charts(screen_result.get("symbols", []))
@@ -88,7 +91,9 @@ async def process_query(req: QueryRequest):
         symbols = intent.get("symbols", [])
         sector = intent.get("sector_filter")
         try:
-            data["news"] = await news_agent.get_intelligence(symbols=symbols, sector=sector)
+            data["news"] = await news_agent.get_intelligence(
+                symbols=symbols, sector=sector
+            )
         except Exception as e:
             logger.error(f"News fetching failed: {e}")
             data["error"] = str(e)
@@ -101,7 +106,7 @@ from fastapi.responses import FileResponse
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "provider": llm.primary_model}
+    return {"status": "ok", "providers": llm.router.configured_providers()}
 
 # Mount Next.js frontend static files
 frontend_out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../frontend/out")
@@ -109,7 +114,9 @@ if os.path.exists(frontend_out):
     logger.info(f"Serving frontend from {frontend_out}")
     
     # Serve Next.js static assets (_next/*, images, etc.)
-    app.mount("/_next", StaticFiles(directory=os.path.join(frontend_out, "_next")), name="next-assets")
+    next_assets = os.path.join(frontend_out, "_next")
+    if os.path.exists(next_assets):
+        app.mount("/_next", StaticFiles(directory=next_assets), name="next-assets")
     
     # Catch-all: serve the matching HTML file or fall back to index.html
     # This ensures page refreshes on /screener, /news, /report all work

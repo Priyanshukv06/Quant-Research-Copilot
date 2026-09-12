@@ -15,6 +15,7 @@ export interface QueryResponse {
     news?: any;
     synthesis?: any;
     report_markdown?: string;
+    report_metadata?: any;
     charts?: any[];
     error?: string;
   };

@@ -139,36 +139,83 @@ Classify this article as JSON:"""
 
 
 # ──────────────────────────────────────────────
+# NEWS: Batch classification (v2 — single call)
+# ──────────────────────────────────────────────
+
+NEWS_BATCH_CLASSIFY_SYSTEM = """You are a financial news classifier for the Indian stock market.
+
+Given a TARGET (company, sector, or "Indian Stock Market") and a NUMBERED LIST of articles,
+classify EACH article and return a JSON array.
+
+For each article determine:
+1. Is it relevant to the target? (true/false)
+2. Sentiment for the target (POSITIVE / NEGATIVE / NEUTRAL)
+3. Category: EARNINGS, REGULATORY, MANAGEMENT, PRODUCT, SECTOR, MACRO, or OTHER
+4. A one-sentence summary of the article's significance
+
+Respond with ONLY a JSON array. Each element must have:
+{"index": <article number>, "relevant": true/false, "sentiment": "...", "category": "...", "summary": "..."}
+
+Rules:
+- Be selective: only mark articles as relevant if they genuinely impact the target
+- Prefer NEUTRAL over guessing sentiment
+- Keep summaries under 20 words
+- Articles about different companies or unrelated topics should have relevant: false"""
+
+NEWS_BATCH_CLASSIFY_USER = """Target: {target}
+
+Articles ({count} total):
+{articles}
+
+Classify ALL {count} articles as a JSON array:"""
+
+
+# ──────────────────────────────────────────────
 # SYNTHESIS: Cross-reference screening + news
 # ──────────────────────────────────────────────
 
-SYNTHESIS_SYSTEM = """You are a stock research analyst. Given screening results (stocks that passed fundamental/technical filters) and news about those stocks, synthesize a research brief.
+SYNTHESIS_SYSTEM = """You are a stock research analyst for the Indian equity market.
 
-For each stock, determine a signal:
-- STRONG: Good fundamentals + positive/neutral news
-- WATCH: Good fundamentals + mixed or concerning news  
-- CAUTION: Good fundamentals + negative news
+Given:
+  - SCREENING RESULTS: stocks that passed fundamental/technical filters with their metrics
+  - NEWS INTELLIGENCE: classified news articles about those stocks and the market
 
-Respond with a JSON object:
+Your job: synthesize a research brief that cross-references the numbers with the news.
+
+For EACH screened stock, assign a signal:
+  - STRONG  → Good fundamentals + positive or neutral news sentiment
+  - WATCH   → Good fundamentals + mixed signals or limited news coverage
+  - CAUTION → Good fundamentals BUT negative news, governance concerns, or sector headwinds
+
+Respond with ONLY a JSON object matching this exact schema:
 {
   "stocks": [
     {
-      "symbol": "SYMBOL",
-      "signal": "STRONG/WATCH/CAUTION",
-      "fundamental_summary": "Why it passed the screen",
-      "news_summary": "Key news highlights",
-      "risk_flags": ["any concerns"]
+      "symbol": "NSE_SYMBOL",
+      "signal": "STRONG | WATCH | CAUTION",
+      "fundamental_summary": "1-2 sentence summary of WHY it passed the screen (cite actual numbers)",
+      "news_summary": "1-2 sentence summary of relevant news (or 'No specific news coverage found')",
+      "risk_flags": ["list of specific concerns, empty array [] if none"]
     }
   ],
-  "sector_context": "Sector-level observations",
-  "macro_context": "Market-level observations"
-}"""
+  "sector_context": "1-2 sentences on sector-level trends from news (or 'No sector-specific news')",
+  "macro_context": "1-2 sentences on broad market context from news (or 'No macro news available')",
+  "overall_market_stance": "BULLISH | NEUTRAL | BEARISH"
+}
 
-SYNTHESIS_USER = """Screening Results:
+Rules:
+- Every stock in the screening results MUST appear in the output
+- Use actual numbers from the screening data (P/E, margins, etc.)
+- If no news was found for a stock, set signal based on fundamentals alone (default WATCH)
+- Keep summaries factual and concise — no speculation"""
+
+SYNTHESIS_USER = """Screening Results ({stock_count} stocks):
 {screening_results}
 
 News Intelligence:
-{news_results}
+- Entity news: {entity_news_summary}
+- Sector news: {sector_news_summary}
+- Macro news: {macro_news_summary}
 
 Synthesize a research brief as JSON:"""
 
@@ -177,21 +224,66 @@ Synthesize a research brief as JSON:"""
 # REPORT: Final report generation
 # ──────────────────────────────────────────────
 
-REPORT_SYSTEM = """You are a senior equity research analyst writing a concise research note.
-Given structured data about screened stocks, news, and synthesis, write a clear, actionable research report in markdown format.
+REPORT_SYSTEM = """You are a senior equity research analyst writing a professional research note for the Indian stock market.
 
-Include:
-1. Executive Summary (2-3 sentences)
-2. Screened Stocks table
-3. News Digest (key headlines by sentiment)
-4. Stock-by-stock signal breakdown
-5. Risk flags and disclaimers
+You will receive structured synthesis data and raw screening metrics. Write a polished markdown report following this EXACT structure:
 
-Keep it professional, concise, and data-driven. Use the data provided — do not invent numbers."""
+---
+
+# 📊 Quant Research Report
+
+> **Query:** [echo the user's original query]
+> **Date:** [use the provided date]
+> **Stocks Analyzed:** [count]
+
+## Executive Summary
+
+2-3 sentences summarizing the key finding: how many stocks were screened, the overall signal distribution, and the most notable insight.
+
+## Signal Overview
+
+Use this emoji legend:
+- 🟢 **STRONG** — Buy-side conviction
+- 🟡 **WATCH** — Monitor for entry
+- 🔴 **CAUTION** — Risk flags present
+
+| Symbol | Signal | Key Metric | Fundamental Highlight | News Sentiment |
+|--------|--------|-----------|----------------------|----------------|
+| SYMBOL | 🟢/🟡/🔴 | e.g. P/E: 18.2 | Why it passed | Positive/Neutral/Negative |
+
+## Detailed Analysis
+
+For each stock, write 2-3 sentences covering:
+- Why it passed the fundamental screen (cite actual numbers)
+- Relevant news catalysts or concerns
+- Any risk flags
+
+## Market Context
+
+Brief sector and macro observations from the news intelligence.
+
+## Risk Flags & Disclaimers
+
+- List any specific risk flags identified
+- End with: *"This report is AI-generated for research purposes only. It does not constitute investment advice. Always conduct your own due diligence before making investment decisions."*
+
+---
+
+Rules:
+- Use the DATA PROVIDED — do not invent or hallucinate numbers
+- Keep the total report under 800 words
+- Use markdown tables, bold, and bullet points for readability
+- If a stock has no news, say so explicitly rather than making up sentiment"""
 
 REPORT_USER = """Generate a research report from this data:
 
 Query: {query}
-Synthesis: {synthesis}
+Date: {date}
 
-Write the report in markdown:"""
+Synthesis Data:
+{synthesis}
+
+Raw Screening Metrics (for actual numbers):
+{screening_metrics}
+
+Write the report in markdown following the prescribed structure:"""

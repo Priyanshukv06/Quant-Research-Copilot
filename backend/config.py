@@ -13,21 +13,11 @@ load_dotenv(_env_path)
 class Settings:
     """Application settings from environment variables."""
 
-    # ── NVIDIA NIM (Primary LLM) ──
-    NVIDIA_API_KEY: str = os.getenv("NVIDIA_API_KEY", "")
-    NVIDIA_BASE_URL: str = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
-    NVIDIA_MODEL: str = os.getenv("NVIDIA_MODEL", "google/diffusiongemma-26b-a4b-it")
-
-    # ── Groq (Cloud Fallback) ──
-    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
-    GROQ_BASE_URL: str = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
-    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
-
     # ── BigQuery ──
     GCP_PROJECT_ID: str = os.getenv("GCP_PROJECT_ID", "adk-mini-project")
     GCP_SERVICE_ACCOUNT_PATH: str = os.getenv(
         "GCP_SERVICE_ACCOUNT_PATH",
-        str(Path(__file__).parent.parent.parent / "Quantamental_SwingTrading_Strategy" / "service-account" / "service_account.json")
+        "D:/Projects/Quantamental_SwingTrading_Strategy/service-account/service-account.json"
     )
     BQ_DATASET_FUNDAMENTALS: str = os.getenv("BQ_DATASET_FUNDAMENTALS", "adk-mini-project.fundamentals")
     BQ_DATASET_TECHNICALS: str = os.getenv("BQ_DATASET_TECHNICALS", "adk-mini-project.technicals")
@@ -40,8 +30,22 @@ class Settings:
 
     # ── LLM Settings ──
     MAX_TOKENS: int = 4096
-    TEMPERATURE: float = 0.3  # Lower for more deterministic slot-filling
+    TEMPERATURE: float = 0.3      # Lower for more deterministic slot-filling
     TOP_P: float = 0.95
+    LLM_TIMEOUT_SECONDS: int = 120
+
+    # ── News Sources ──
+    GNEWS_API_KEY: str = os.getenv("GNEWS_API_KEY", "")
+    NEWSDATA_API_KEY: str = os.getenv("NEWSDATA_API_KEY", "")
+    NEWS_CACHE_TTL_SECONDS: int = int(os.getenv("NEWS_CACHE_TTL_SECONDS", "900"))
+
+    # ── Router ──
+    ROUTER_MAX_ATTEMPTS: int = 5
+    ROUTER_ROTATE_KEYS: bool = True        # Failover: retry same model on next key
+    ROUTER_ROUND_ROBIN_KEYS: bool = True   # Load balance: advance key after success
+    ROUTER_RATE_LIMIT_COOLDOWN_S: int = 45
+    ROUTER_SERVER_ERROR_COOLDOWN_S: int = 20
+    ROUTER_AUTH_FAILURE_COOLDOWN_S: int = 3600
 
 
 settings = Settings()
