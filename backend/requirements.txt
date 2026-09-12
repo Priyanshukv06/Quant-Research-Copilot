@@ -17,3 +17,4 @@ aiohttp>=3.9.0
 
 # Visualization
 plotly==6.1.2
+numpy>=1.26.0
